@@ -65,6 +65,19 @@ class TaskResponse(BaseModel):
     error: Optional[str] = None
 
 
+class TranscriptionSegmentSchema(BaseModel):
+    start: float
+    end: float
+    text: str
+    words: Optional[list] = Field(default_factory=list)
+
+
+class EditTranscriptionRequest(BaseModel):
+    task_id: str = Field(..., description="Original task ID to retrieve transcription from")
+    segments: list[TranscriptionSegmentSchema] = Field(..., description="Edited transcription segments")
+    caption_config: Optional[CaptionConfig] = Field(default_factory=CaptionConfig)
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
