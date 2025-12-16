@@ -141,17 +141,28 @@ async def get_task_status(task_id: str):
 async def download_video(filename: str):
     settings = get_settings()
     file_path = Path(settings.output_dir) / filename
-    
+
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video file not found"
         )
-    
+
+    # Determine media type based on file extension
+    ext = file_path.suffix.lower()
+    media_type_map = {
+        ".mp4": "video/mp4",
+        ".mov": "video/quicktime",
+        ".avi": "video/x-msvideo",
+        ".mkv": "video/x-matroska",
+        ".webm": "video/webm",
+    }
+    media_type = media_type_map.get(ext, "video/mp4")
+
     return FileResponse(
         path=file_path,
         filename=filename,
-        media_type="video/mp4"
+        media_type=media_type
     )
 
 
@@ -249,3 +260,44 @@ async def reprocess_video(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Reprocessing failed: {str(e)}"
         )
+
+
+@router.get(
+    "/stream/{task_id}",
+    summary="Stream source video",
+    description="Stream the original uploaded video for editing"
+)
+async def stream_source_video(task_id: str):
+    task_manager = get_task_manager()
+    task = await task_manager.get_task(task_id)
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found"
+        )
+        
+    if not task.input_path or not Path(task.input_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source video not found"
+        )
+    
+    path = Path(task.input_path)
+    
+    # Determine media type based on file extension
+    ext = path.suffix.lower()
+    media_type_map = {
+        ".mp4": "video/mp4",
+        ".mov": "video/quicktime",
+        ".avi": "video/x-msvideo",
+        ".mkv": "video/x-matroska",
+        ".webm": "video/webm",
+    }
+    media_type = media_type_map.get(ext, "video/mp4")
+    
+    return FileResponse(
+        path=path,
+        media_type=media_type,
+        filename=path.name
+    )

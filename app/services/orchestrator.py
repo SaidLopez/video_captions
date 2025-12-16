@@ -46,11 +46,12 @@ class CaptionOrchestrator:
             )
             
             transcription = await self.transcription_service.transcribe(audio_path)
-            
+
             await self.task_manager.update_task(
                 task_id,
                 progress=60.0,
-                message="Transcription complete"
+                message="Transcription complete",
+                transcription=transcription
             )
             
             await self.storage_service.delete_file(audio_path)
@@ -149,7 +150,8 @@ class CaptionOrchestrator:
                 new_task.id,
                 status=TaskStatusEnum.RENDERING,
                 progress=70.0,
-                message="Rendering captions with edited transcription"
+                message="Rendering captions with edited transcription",
+                transcription=edited_transcription
             )
 
             output_path = self.storage_service.get_output_path(original_video_path.name)

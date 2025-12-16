@@ -2,7 +2,7 @@ from typing import Dict, Optional
 from datetime import datetime
 import asyncio
 
-from app.models import VideoTask, TaskStatusEnum
+from app.models import VideoTask, TaskStatusEnum, Transcription
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,13 +32,14 @@ class TaskManager:
         output_path: Optional[str] = None,
         result_url: Optional[str] = None,
         error: Optional[str] = None,
+        transcription: Optional[Transcription] = None,
         **kwargs
     ) -> Optional[VideoTask]:
         async with self._lock:
             task = self._tasks.get(task_id)
             if not task:
                 return None
-            
+
             if status is not None:
                 task.status = status
             if progress is not None:
@@ -51,16 +52,18 @@ class TaskManager:
                 task.result_url = result_url
             if error is not None:
                 task.error = error
-            
+            if transcription is not None:
+                task.transcription = transcription
+
             task.updated_at = datetime.utcnow()
-            
+
             logger.info(
                 "task_updated",
                 task_id=task_id,
                 status=task.status.value,
                 progress=task.progress
             )
-            
+
             return task
     
     async def delete_task(self, task_id: str) -> bool:

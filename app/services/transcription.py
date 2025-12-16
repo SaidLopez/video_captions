@@ -1,5 +1,6 @@
 import whisper
 import torch
+import asyncio
 from pathlib import Path
 from typing import Optional
 from app.models import Transcription, TranscriptionSegment
@@ -29,12 +30,15 @@ class TranscriptionService:
         try:
             logger.info("starting_transcription", audio_path=str(audio_path))
             
-            result = self.model.transcribe(
-                str(audio_path),
-                language=language,
-                word_timestamps=True,
-                verbose=False
-            )
+            def _run_transcribe():
+                return self.model.transcribe(
+                    str(audio_path),
+                    language=language,
+                    word_timestamps=True,
+                    verbose=False
+                )
+
+            result = await asyncio.to_thread(_run_transcribe)
             
             segments = []
             for seg in result["segments"]:

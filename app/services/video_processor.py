@@ -1,6 +1,7 @@
 import ffmpeg
 import subprocess
 import json
+import asyncio
 from pathlib import Path
 from typing import Optional, List, Tuple
 from app.models import Transcription, TranscriptionSegment
@@ -105,13 +106,16 @@ class VideoProcessor:
         try:
             logger.info("extracting_audio", video_path=str(video_path))
             
-            (
-                ffmpeg
-                .input(str(video_path))
-                .output(str(output_path), acodec='pcm_s16le', ac=1, ar='16000')
-                .overwrite_output()
-                .run(capture_stdout=True, capture_stderr=True)
-            )
+            def _run_ffmpeg():
+                (
+                    ffmpeg
+                    .input(str(video_path))
+                    .output(str(output_path), acodec='pcm_s16le', ac=1, ar='16000')
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True)
+                )
+
+            await asyncio.to_thread(_run_ffmpeg)
             
             logger.info("audio_extracted", output_path=str(output_path))
             return output_path
@@ -286,37 +290,55 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             logger.info("subtitle_file_created", ass_path=str(ass_path))
             
             ass_path_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
-            
+
             cmd = [
                 "ffmpeg",
                 "-i", str(video_path),
                 "-vf", f"ass='{ass_path_escaped}'",
-                "-c:a", "copy",
+                "-c:v", "libx264",
+                "-profile:v", "high",
+                "-level", "4.0",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-movflags", "+faststart",
                 "-y",
                 str(output_path)
             ]
             
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True
-            )
-            
-            stdout, stderr = process.communicate()
-            
-            if process.returncode != 0:
-                logger.error("ffmpeg_failed", stderr=stderr)
+            def _run_ffmpeg_cmd():
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True
+                )
+                return process.communicate(), process.returncode
+
+            (stdout, stderr), returncode = await asyncio.to_thread(_run_ffmpeg_cmd)
+
+            if returncode != 0:
+                logger.error(
+                    "ffmpeg_failed",
+                    returncode=process.returncode,
+                    stderr=stderr,
+                    stdout=stdout
+                )
                 raise VideoProcessingError(f"FFmpeg failed: {stderr}")
-            
+
+            if not Path(output_path).exists():
+                logger.error("output_file_not_created", output_path=str(output_path))
+                raise VideoProcessingError(f"Output video file was not created: {output_path}")
+
             if ass_path.exists():
                 ass_path.unlink()
-            
+
             logger.info("captions_added", output_path=str(output_path))
             return output_path
-            
+
         except Exception as e:
-            logger.error("caption_rendering_failed", error=str(e))
+            logger.error("caption_rendering_failed", error=str(e), video_path=str(video_path))
             raise VideoProcessingError(f"Failed to add captions: {str(e)}")
 
 
