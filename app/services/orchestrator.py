@@ -49,41 +49,17 @@ class CaptionOrchestrator:
 
             await self.task_manager.update_task(
                 task_id,
-                progress=60.0,
-                message="Transcription complete",
+                status=TaskStatusEnum.COMPLETED,
+                progress=100.0,
+                message="Transcription complete, ready for editing",
                 transcription=transcription
             )
             
             await self.storage_service.delete_file(audio_path)
             
-            await self.task_manager.update_task(
-                task_id,
-                status=TaskStatusEnum.RENDERING,
-                progress=70.0,
-                message="Rendering captions"
-            )
+            logger.info("video_transcription_complete", task_id=task_id)
             
-            output_path = self.storage_service.get_output_path(video_path.name)
-            
-            await self.video_processor.add_captions(
-                video_path,
-                output_path,
-                transcription,
-                config
-            )
-            
-            await self.task_manager.update_task(
-                task_id,
-                status=TaskStatusEnum.COMPLETED,
-                progress=100.0,
-                message="Processing complete",
-                output_path=str(output_path),
-                result_url=f"/api/v1/videos/download/{output_path.name}"
-            )
-            
-            logger.info("video_processing_complete", task_id=task_id, output=str(output_path))
-            
-            return str(output_path)
+            return str(video_path)
             
         except Exception as e:
             logger.error("video_processing_failed", task_id=task_id, error=str(e))

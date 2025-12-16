@@ -52,6 +52,11 @@ export const videoAPI = {
     const response = await client.get('/videos/styles');
     return response.data;
   },
+
+  // Get video thumbnail URL
+  getThumbnail: (taskId) => {
+    return `${API_BASE_URL}/videos/tasks/${taskId}/thumbnail`;
+  },
 };
 
 export default client;

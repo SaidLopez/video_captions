@@ -14,14 +14,22 @@ const STYLE_DESCRIPTIONS = {
 export function StylingStep() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { captionConfig, updateCaptionConfig, setCurrentStep } = useCaptionStore();
+  const { captionConfig, updateCaptionConfig, setCurrentStep, taskId } = useCaptionStore();
   const [availableStyles, setAvailableStyles] = useState([]);
+  const [thumbnailUrl, setThumbnailUrl] = useState(null);
 
   useEffect(() => {
-    const loadStyles = async () => {
+    const loadData = async () => {
       try {
-        const data = await videoAPI.getStyles();
-        setAvailableStyles(data.styles);
+        const [stylesData] = await Promise.all([
+          videoAPI.getStyles(),
+        ]);
+        setAvailableStyles(stylesData.styles);
+
+        if (taskId) {
+          const url = videoAPI.getThumbnail(taskId);
+          setThumbnailUrl(url);
+        }
       } catch (err) {
         setError('Failed to load styles');
       } finally {
@@ -29,7 +37,7 @@ export function StylingStep() {
       }
     };
 
-    loadStyles();
+    loadData();
   }, []);
 
   if (isLoading) {
@@ -74,12 +82,26 @@ export function StylingStep() {
               {availableStyles.map((style) => (
                 <button
                   key={style.name}
-                  onClick={() => updateCaptionConfig({ style: style.name })}
-                  className={`p-3 rounded-lg border-2 transition-all text-left ${
-                    captionConfig.style === style.name
+                  onClick={() => {
+                    const newConfig = { style: style.name };
+                    // If the style object has a config (it should now), apply it
+                    if (style.config) {
+                      // Map backend config keys to frontend store keys if they differ
+                      // Based on schema, they match mostly.
+                      if (style.config.font_size) newConfig.font_size = style.config.font_size;
+                      if (style.config.font_color) newConfig.font_color = style.config.font_color;
+                      if (style.config.stroke_color) newConfig.stroke_color = style.config.stroke_color;
+                      if (style.config.stroke_width !== undefined) newConfig.stroke_width = style.config.stroke_width;
+                      if (style.config.highlight_color) newConfig.highlight_color = style.config.highlight_color;
+                      // Ensure we don't accidentally overwrite user manual tweaks unless they explicitly switch styles
+                      // But the request is to fix the preview not updating, so applying defaults is expected.
+                    }
+                    updateCaptionConfig(newConfig);
+                  }}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${captionConfig.style === style.name
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   <div className="font-medium text-sm capitalize">{style.name.replace('_', ' ')}</div>
                   <div className="text-xs text-gray-500 mt-1">
@@ -98,11 +120,10 @@ export function StylingStep() {
                 <button
                   key={pos}
                   onClick={() => updateCaptionConfig({ position: pos })}
-                  className={`p-2 rounded-lg border-2 transition-all capitalize ${
-                    captionConfig.position === pos
+                  className={`p-2 rounded-lg border-2 transition-all capitalize ${captionConfig.position === pos
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   {pos}
                 </button>
@@ -231,8 +252,19 @@ export function StylingStep() {
         </div>
 
         {/* Preview */}
-        <div className="flex flex-col items-center justify-center p-6 sm:p-8 bg-gray-900 rounded-lg min-h-80 sm:min-h-96">
-          <div className="text-center mb-6 sm:mb-8 w-full px-4">
+        <div
+          className="flex flex-col items-center justify-center p-6 sm:p-8 bg-gray-900 rounded-lg min-h-80 sm:min-h-96 relative overflow-hidden"
+          style={{
+            backgroundImage: thumbnailUrl ? `url(${thumbnailUrl})` : 'none',
+            backgroundSize: 'contain',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat'
+          }}
+        >
+          {/* Overlay to ensure text readability if needed, though usually captions sit on video directly */}
+          {/* <div className="absolute inset-0 bg-black/30 pointer-events-none"></div> */}
+
+          <div className="text-center mb-6 sm:mb-8 w-full px-4 relative z-10">
             <p className="text-gray-400 text-xs sm:text-sm mb-4">Preview</p>
             <div
               className="inline-block px-4 sm:px-6 py-2 sm:py-3 rounded max-w-full break-words"

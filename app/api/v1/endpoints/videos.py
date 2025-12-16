@@ -16,7 +16,9 @@ from app.schemas import (
 from app.models import TaskStatusEnum
 from app.services.storage import get_storage_service
 from app.services.task_manager import get_task_manager
+from app.services.task_manager import get_task_manager
 from app.services.orchestrator import get_caption_orchestrator
+from app.services.video_processor import get_video_processor, CaptionStyler
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.exceptions import (
@@ -176,7 +178,8 @@ async def get_caption_styles():
         "styles": [
             {
                 "name": style.value,
-                "description": f"{style.value.replace('_', ' ').title()} style captions"
+                "description": f"{style.value.replace('_', ' ').title()} style captions",
+                "config": CaptionStyler.STYLE_PRESETS[style]
             }
             for style in CaptionStyle
         ],
@@ -300,4 +303,50 @@ async def stream_source_video(task_id: str):
         path=path,
         media_type=media_type,
         filename=path.name
+    )
+
+
+@router.get(
+    "/tasks/{task_id}/thumbnail",
+    summary="Get video thumbnail",
+    description="Get a representative thumbnail from the source video"
+)
+async def get_video_thumbnail(task_id: str):
+    task_manager = get_task_manager()
+    task = await task_manager.get_task(task_id)
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found"
+        )
+        
+    if not task.input_path or not Path(task.input_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source video not found"
+        )
+    
+    # Check if thumbnail already exists
+    video_path = Path(task.input_path)
+    thumbnail_path = video_path.parent / f"{video_path.stem}_thumb.jpg"
+    
+    if not thumbnail_path.exists():
+        # Generate thumbnail
+        video_processor = get_video_processor()
+        try:
+            # Generate thumbnail at 10% of duration or 1 second, whichever is safe
+            # For now, just use 1.0s or 0.0s
+            await video_processor.generate_thumbnail(video_path, thumbnail_path, time=1.0)
+        except Exception as e:
+            logger.error(f"Failed to generate thumbnail for task {task_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate thumbnail"
+            )
+    
+    return FileResponse(
+        path=thumbnail_path,
+        media_type="image/jpeg",
+        filename=thumbnail_path.name
     )

@@ -9,6 +9,7 @@ export function ReprocessingStep() {
 
   const {
     taskId,
+    setTaskId,
     editedSegments,
     captionConfig,
     setProgress,
@@ -32,9 +33,10 @@ export function ReprocessingStep() {
       const response = await videoAPI.reprocessVideo(taskId, segments, captionConfig);
 
       setNewTaskId(response.task_id);
+      setTaskId(response.task_id);
       setProgress(response.progress);
       setTaskStatus(response.status);
-      setCurrentStep('downloading');
+      setCurrentStep('download');
     } catch (err) {
       const errorMsg = err.response?.data?.detail || err.message;
       setError(errorMsg);
@@ -46,7 +48,7 @@ export function ReprocessingStep() {
   return (
     <div className="w-full max-w-2xl mx-auto">
       <div className="mb-6 sm:mb-8">
-        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Reprocess Video</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Render Video</h2>
         <p className="text-sm sm:text-base text-gray-600">
           Your edited transcription and styling will now be applied to create the final video.
         </p>
@@ -112,17 +114,17 @@ export function ReprocessingStep() {
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between pt-6 border-t border-gray-200">
             <button
-              onClick={() => setCurrentStep('styling')}
+              onClick={() => setCurrentStep('edit')}
               className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-sm"
             >
-              ← Back: Adjust Styling
+              ← Back: Edit
             </button>
             <button
               onClick={submitReprocess}
               disabled={isSubmitting}
               className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm"
             >
-              {isSubmitting ? 'Submitting...' : 'Reprocess Video'}
+              {isSubmitting ? 'Starting Render...' : 'Render Video'}
             </button>
           </div>
         </div>
@@ -137,10 +139,10 @@ export function ReprocessingStep() {
               />
             </svg>
           </div>
-          <p className="text-green-800 font-semibold mb-2 text-sm sm:text-base">Reprocessing started!</p>
+          <p className="text-green-800 font-semibold mb-2 text-sm sm:text-base">Rendering started!</p>
           <p className="text-gray-600 mb-4 text-xs sm:text-sm break-all">New Task ID: {newTaskId}</p>
           <button
-            onClick={() => setCurrentStep('downloading')}
+            onClick={() => setCurrentStep('download')}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
           >
             View Progress →

@@ -3,23 +3,36 @@ import { useCaptionStore } from './store/captionStore';
 import { UploadStep } from './components/UploadStep';
 import { ProcessingStep } from './components/ProcessingStep';
 import { EditStep } from './components/EditStep';
-import { StylingStep } from './components/StylingStep';
 import { ReprocessingStep } from './components/ReprocessingStep';
 import { DownloadStep } from './components/DownloadStep';
 
 function App() {
   const { currentStep } = useCaptionStore();
 
+  // Visual steps only
   const steps = [
     { id: 'upload', label: 'Upload', icon: '📤' },
-    { id: 'processing', label: 'Processing', icon: '⚙️' },
     { id: 'edit', label: 'Edit', icon: '✏️' },
-    { id: 'styling', label: 'Styling', icon: '🎨' },
-    { id: 'reprocessing', label: 'Reprocess', icon: '🔄' },
-    { id: 'download', label: 'Download', icon: '⬇️' },
+    { id: 'export', label: 'Export', icon: '🚀' },
   ];
 
-  const currentStepIndex = steps.findIndex((step) => step.id === currentStep);
+  // Map internal detailed states to visual step indices
+  const getVisualStepIndex = (internalStep) => {
+    switch (internalStep) {
+      case 'upload':
+      case 'processing': // Processing is part of step 1 completion/transition
+        return 0;
+      case 'edit':
+        return 1;
+      case 'render': // Rendering is start of step 3
+      case 'download': // Download is completion of step 3
+        return 2;
+      default:
+        return 0;
+    }
+  };
+
+  const currentStepIndex = getVisualStepIndex(currentStep);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -41,11 +54,10 @@ function App() {
             {steps.map((step, index) => (
               <div key={step.id} className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
                 <div
-                  className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 transition-all ${
-                    index <= currentStepIndex
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-600'
-                  }`}
+                  className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-semibold flex-shrink-0 transition-all ${index <= currentStepIndex
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-600'
+                    }`}
                 >
                   {index < currentStepIndex ? (
                     <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -65,9 +77,8 @@ function App() {
 
                 {index < steps.length - 1 && (
                   <div
-                    className={`h-0.5 sm:h-1 flex-1 min-w-0 transition-all ${
-                      index < currentStepIndex ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
+                    className={`h-0.5 sm:h-1 flex-1 min-w-0 transition-all ${index < currentStepIndex ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
                   />
                 )}
               </div>
@@ -82,8 +93,7 @@ function App() {
           {currentStep === 'upload' && <UploadStep />}
           {currentStep === 'processing' && <ProcessingStep />}
           {currentStep === 'edit' && <EditStep />}
-          {currentStep === 'styling' && <StylingStep />}
-          {currentStep === 'reprocessing' && <ReprocessingStep />}
+          {currentStep === 'render' && <ReprocessingStep />}
           {currentStep === 'download' && <DownloadStep />}
         </div>
       </main>

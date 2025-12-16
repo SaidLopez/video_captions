@@ -145,6 +145,35 @@ class VideoProcessor:
             logger.error("video_probe_failed", error=str(e))
             raise VideoProcessingError(f"Failed to probe video: {str(e)}")
     
+    
+    async def generate_thumbnail(self, video_path: Path, output_path: Path, time: float = 0.0) -> Path:
+        try:
+            logger.info("generating_thumbnail", video_path=str(video_path))
+            
+            def _run_ffmpeg():
+                (
+                    ffmpeg
+                    .input(str(video_path), ss=time)
+                    .output(str(output_path), vframes=1)
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True)
+                )
+
+            await asyncio.to_thread(_run_ffmpeg)
+            
+            if not output_path.exists():
+                raise VideoProcessingError("Thumbnail file was not created")
+                
+            logger.info("thumbnail_generated", output_path=str(output_path))
+            return output_path
+            
+        except ffmpeg.Error as e:
+            logger.error("thumbnail_generation_failed", error=e.stderr.decode() if e.stderr else str(e))
+            raise VideoProcessingError(f"Failed to generate thumbnail: {str(e)}")
+        except Exception as e:
+            logger.error("thumbnail_generation_failed", error=str(e))
+            raise VideoProcessingError(f"Failed to generate thumbnail: {str(e)}")
+
     def _generate_ass_subtitle(
         self,
         transcription: Transcription,
