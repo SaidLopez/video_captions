@@ -236,27 +236,55 @@ async def reprocess_video(
     request: EditTranscriptionRequest
 ):
     orchestrator = get_caption_orchestrator()
+    task_manager = get_task_manager()
 
     try:
-        new_task_id = await orchestrator.reprocess_with_edited_transcription(
-            task_id=request.task_id,
-            segments_data=[seg.model_dump() for seg in request.segments],
-            new_config=request.caption_config
+        # Get original task to extract video path
+        original_task = await task_manager.get_task(request.task_id)
+        if not original_task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {request.task_id} not found"
+            )
+
+        if not original_task.input_path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Original task does not have a video file"
+            )
+
+        # Use provided config or default
+        caption_config = request.caption_config or CaptionConfig()
+
+        # Create new task for the reprocess
+        new_task = await task_manager.create_task(
+            input_path=original_task.input_path,
+            caption_config=caption_config.model_dump()
         )
 
-        task_manager = get_task_manager()
-        new_task = await task_manager.get_task(new_task_id)
+        # Prepare segments data for reprocessing
+        segments_data = [seg.model_dump() for seg in request.segments]
 
-        logger.info("video_reprocess_initiated", original_task_id=request.task_id, new_task_id=new_task_id)
+        # Add rendering to background tasks
+        background_tasks.add_task(
+            orchestrator.reprocess_with_edited_transcription,
+            new_task.id,
+            segments_data,
+            caption_config
+        )
+
+        logger.info("video_reprocess_initiated", original_task_id=request.task_id, new_task_id=new_task.id)
 
         return TaskResponse(
-            task_id=new_task_id,
+            task_id=new_task.id,
             status=TaskStatus(new_task.status.value),
             progress=new_task.progress,
             message="Reprocessing started with edited transcription",
             created_at=new_task.created_at,
             updated_at=new_task.updated_at,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("reprocess_request_failed", error=str(e))
         raise HTTPException(

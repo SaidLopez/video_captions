@@ -29,7 +29,7 @@ export function EditStep() {
   const [availableStyles, setAvailableStyles] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const API_BASE_URL = '/api/v1';
   const videoSrc = `${API_BASE_URL}/videos/stream/${taskId}`;
 
   useEffect(() => {
@@ -78,9 +78,12 @@ export function EditStep() {
 
   const handleSegmentClick = (start) => {
     if (videoRef.current) {
-      videoRef.current.currentTime = start;
-      videoRef.current.play();
-      setIsPlaying(true);
+      const timeToSeek = Number(start);
+      if (Number.isFinite(timeToSeek)) {
+        videoRef.current.currentTime = timeToSeek;
+        videoRef.current.play().catch(e => console.error("Play failed:", e));
+        setIsPlaying(true);
+      }
     }
   };
 
@@ -137,7 +140,7 @@ export function EditStep() {
     // --- Determine Active Word Index ---
     let activeWordIndex = 0;
 
-    // Try precise timing
+    // Try precise timing only if word data exists and matches current text
     let usePrecise = false;
     let hasPreciseData = segment.words && segment.words.length > 0;
 
@@ -145,6 +148,7 @@ export function EditStep() {
       const wordsText = segment.words.map(w => w.word || w.text).join('').replace(/\s/g, '').toLowerCase();
       const currentText = segment.text.replace(/\s/g, '').toLowerCase();
       // Check if text roughly matches (tolerant of minor edits/whitespace)
+      // When text is edited, word array is cleared, so this will be false
       if (Math.abs(wordsText.length - currentText.length) < 5 || wordsText === currentText) {
         usePrecise = true;
       }

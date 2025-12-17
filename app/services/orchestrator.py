@@ -73,29 +73,23 @@ class CaptionOrchestrator:
 
     async def reprocess_with_edited_transcription(
         self,
-        task_id: str,
+        new_task_id: str,
         segments_data: list[dict],
         new_config: CaptionConfig
     ) -> str:
         """Re-process video with edited transcription and updated caption config"""
         try:
-            # Get original task
-            original_task = await self.task_manager.get_task(task_id)
-            if not original_task:
-                raise VideoProcessingError(f"Original task {task_id} not found")
+            # Get the new task (which already has input_path set)
+            new_task = await self.task_manager.get_task(new_task_id)
+            if not new_task:
+                raise VideoProcessingError(f"Task {new_task_id} not found")
 
-            if not original_task.input_path:
-                raise VideoProcessingError("Original video path not found in task")
+            if not new_task.input_path:
+                raise VideoProcessingError("Video path not found in task")
 
-            original_video_path = Path(original_task.input_path)
-            if not original_video_path.exists():
-                raise VideoProcessingError(f"Original video file not found: {original_video_path}")
-
-            # Create new task for reprocessing
-            new_task = await self.task_manager.create_task(
-                input_path=str(original_video_path),
-                caption_config=new_config.model_dump()
-            )
+            video_path = Path(new_task.input_path)
+            if not video_path.exists():
+                raise VideoProcessingError(f"Video file not found: {video_path}")
 
             # Convert segments data to Transcription object
             segments = [
@@ -108,13 +102,11 @@ class CaptionOrchestrator:
                 for seg in segments_data
             ]
 
-            # Get language from original transcription if available
-            language = "en"
-            if original_task.transcription:
-                language = original_task.transcription.language
-
             # Determine duration from segments
             duration = max([seg["end"] for seg in segments_data]) if segments_data else 0
+
+            # Determine language (default to "en")
+            language = "en"
 
             edited_transcription = Transcription(
                 segments=segments,
@@ -123,24 +115,24 @@ class CaptionOrchestrator:
             )
 
             await self.task_manager.update_task(
-                new_task.id,
+                new_task_id,
                 status=TaskStatusEnum.RENDERING,
                 progress=70.0,
                 message="Rendering captions with edited transcription",
                 transcription=edited_transcription
             )
 
-            output_path = self.storage_service.get_output_path(original_video_path.name)
+            output_path = self.storage_service.get_output_path(video_path.name)
 
             await self.video_processor.add_captions(
-                original_video_path,
+                video_path,
                 output_path,
                 edited_transcription,
                 new_config
             )
 
             await self.task_manager.update_task(
-                new_task.id,
+                new_task_id,
                 status=TaskStatusEnum.COMPLETED,
                 progress=100.0,
                 message="Reprocessing complete",
@@ -148,12 +140,18 @@ class CaptionOrchestrator:
                 result_url=f"/api/v1/videos/download/{output_path.name}"
             )
 
-            logger.info("video_reprocessing_complete", task_id=new_task.id, output=str(output_path))
+            logger.info("video_reprocessing_complete", task_id=new_task_id, output=str(output_path))
 
-            return new_task.id
+            return new_task_id
 
         except Exception as e:
-            logger.error("video_reprocessing_failed", task_id=task_id, error=str(e))
+            logger.error("video_reprocessing_failed", task_id=new_task_id, error=str(e))
+            await self.task_manager.update_task(
+                new_task_id,
+                status=TaskStatusEnum.FAILED,
+                error=str(e),
+                message="Reprocessing failed"
+            )
             raise VideoProcessingError(f"Video reprocessing failed: {str(e)}")
 
 

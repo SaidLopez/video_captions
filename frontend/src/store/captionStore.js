@@ -55,7 +55,8 @@ export const useCaptionStore = create((set) => ({
   updateSegment: (index, text) => set((state) => {
     const newSegments = [...state.editedSegments];
     if (newSegments[index]) {
-      newSegments[index] = { ...newSegments[index], text };
+      // Clear word-level timing when text is edited to avoid sync issues
+      newSegments[index] = { ...newSegments[index], text, words: [] };
     }
     return { editedSegments: newSegments };
   }),

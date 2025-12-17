@@ -222,42 +222,134 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
         
         for segment in transcription.segments:
-            if config.highlight_current_word and segment.words:
+            # Only use word-level timing if words exist and highlight is enabled
+            has_word_timing = config.highlight_current_word and segment.words and len(segment.words) > 0
+
+            if has_word_timing:
                 words = segment.words
                 lines = self._split_into_lines(words, config.max_words_per_line)
-                
+
                 for line_words in lines:
                     if not line_words:
                         continue
-                    
+
                     line_start = line_words[0]["start"]
                     line_end = line_words[-1]["end"]
-                    
+
                     for i, word in enumerate(line_words):
                         word_start = word["start"]
                         word_end = word["end"]
-                        
+
                         text_parts = []
                         for j, w in enumerate(line_words):
                             if j == i:
                                 text_parts.append(f"{{\\rHighlight}}{w['word']}{{\\rDefault}}")
                             else:
                                 text_parts.append(w['word'])
-                        
+
                         text = " ".join(text_parts)
-                        
+
                         start_time = self._format_ass_time(word_start)
                         end_time = self._format_ass_time(word_end)
-                        
+
                         ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
             else:
-                lines = self._split_text_into_lines(segment.text, config.max_words_per_line)
-                text = "\\N".join(lines)
+                # Use segment-level timing for edited captions or when word timing not available
+                # Logic: Split text into lines based on max_words_per_line, and interpolate time for each line
+                words = segment.text.split()
+                if not words:
+                    continue
+
+                # Group words into chunks
+                chunks = []
+                for i in range(0, len(words), config.max_words_per_line):
+                    chunks.append(words[i : i + config.max_words_per_line])
+
+                num_chunks = len(chunks)
+                if num_chunks == 0:
+                    continue
                 
-                start_time = self._format_ass_time(segment.start)
-                end_time = self._format_ass_time(segment.end)
+                segment_duration = segment.end - segment.start
+                chunk_duration = segment_duration / num_chunks
                 
-                ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
+                for i, chunk_words in enumerate(chunks):
+                    # Calculate start/end time for this chunk
+                    chunk_start = segment.start + (i * chunk_duration)
+                    chunk_end = chunk_start + chunk_duration
+                    
+                    # Logic: Interpolate word timings based on character length
+                    full_text = " ".join(chunk_words)
+                    total_chars = len(full_text.replace(" ", ""))
+                    
+                    if total_chars == 0:
+                        # Fallback for empty/space-only lines
+                        text = full_text
+                    else:
+                        # Distribute time proportionally to character length
+                        text_parts = []
+                        current_time = chunk_start
+                        
+                        for w_idx, w_text in enumerate(chunk_words):
+                            w_len = len(w_text)
+                            # Calculate duration for this word
+                            # (word_len / total_chars) * total_duration
+                            w_duration = (w_len / total_chars) * chunk_duration
+                            
+                            w_start = current_time
+                            w_end = current_time + w_duration
+                            current_time += w_duration # Advance time
+                            
+                            # Construct highlight tag
+                            # Note: The loop for generating the line text needs to match the structure 
+                            # of the "word timing" block above, but we are generating the *entire line's*
+                            # karaoke tags here. 
+                            # Actually, ASS karaoke requires a specific structure. 
+                            # The loop above (lines 239-250) creates separate Dialogue events for EACH word highlight state?
+                            # No, looking at lines 243-250, it iterates through words in the line, 
+                            # and for each "i" (current word), it highlights THAT word.
+                            # So we need to do the same here: For each word in the chunk, create a Dialogue line 
+                            # where that word is highlighted.
+                            
+                            # Wait, this nested loop approach means if a line has 5 words, we generate 5 Dialogue lines 
+                            # that overlap in time? 
+                            # Let's check the original logic at lines 255:
+                            # ass_content += f"Dialogue: 0,{start_time},{end_time},..."
+                            # AND start_time/end_time are specific to that WORD.
+                            # Ah! The original logic (lines 240-255) creates a Dialogue entry for the duration of a SINGLE WORD.
+                            # And in that entry, it shows the FULL LINE, but with the specific word highlighted.
+                            # So: Time = Word Start to Word End. Text = Full Line with specific word highlighted.
+                            
+                            # So for our interpolation:
+                            # We need to iterate through words in this chunk.
+                            # For each word, define its specific start/end time.
+                            # Create a dialogue entry for THAT time range.
+                            # In that entry, verify the text has the correct highlighting tags.
+                            pass
+                        
+                        # Re-implementing the loop with correct logic
+                        current_word_start = chunk_start
+                        
+                        for w_idx, w_text in enumerate(chunk_words):
+                            w_len = len(w_text)
+                            w_duration = (w_len / total_chars) * chunk_duration
+                            w_end = current_word_start + w_duration
+                            
+                            # Construct text with highlight for THIS word
+                            line_text_parts = []
+                            for target_idx, target_word in enumerate(chunk_words):
+                                if target_idx == w_idx:
+                                    line_text_parts.append(f"{{\\rHighlight}}{target_word}{{\\rDefault}}")
+                                else:
+                                    line_text_parts.append(target_word)
+                            
+                            text = " ".join(line_text_parts)
+                            
+                            start_time = self._format_ass_time(current_word_start)
+                            end_time = self._format_ass_time(w_end)
+                             
+                            ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
+                            
+                            current_word_start = w_end # Next word starts when this one ends
         
         return ass_content
     
@@ -329,8 +421,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "-level", "4.0",
                 "-crf", "23",
                 "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-b:a", "128k",
+                "-c:a", "copy",
                 "-movflags", "+faststart",
                 "-y",
                 str(output_path)
